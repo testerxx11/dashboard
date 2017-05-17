@@ -6,6 +6,7 @@
 #include <Adafruit_SSD1306.h>
 
 #include <BME280I2C.h>
+#include <EEPROM.h>
 
 #define OLED_RESET 4
 Adafruit_SSD1306 display(OLED_RESET);  //!!! WTF??
@@ -38,10 +39,10 @@ bool metric = true;
 
 #define SERIAL_BAUD 115200 // 9600 //115200
 
-const int PWM_PIN=3; // D3 nano
-const int SPEED_SENSOR_PIN=2; // D2 nano
-const int TAXOMETR_PIN=3; // D3 nano
-const int BUTTON1_PIN=4; // D4 nano
+const byte PWM_PIN=3; // D3 nano
+const byte SPEED_SENSOR_PIN=2; // D2 nano
+const byte TAXOMETR_PIN=3; // D3 nano
+const byte BUTTON1_PIN=4; // D4 nano
 //const int ICP_PIN=8; // D8 nano
 //T1 = D5 nano
 
@@ -54,8 +55,10 @@ unsigned long start, finished, elapsed;
 
 unsigned long start_loop, finished_loop, elapsed_loop;
 
+uint16_t ticks_per_meter = 30;
 unsigned long speed_pulses = 0;
-unsigned long odometr_tics = 256009 * 1000 / 2048 * 30;
+unsigned long odometr_tics = 256009 * 1000 / 2048 * ticks_per_meter;
+
 
 unsigned long odometr = 256009;
 unsigned long odometr_0 = 256009 - 259;
@@ -68,6 +71,54 @@ float speed = 0.0;
 uint16_t memory_free;
 
 byte display_mode = 0; // 0 - default(odometers); 1 - speedo/taxo; 2 - meteo; 6 - DBG
+
+unsigned long read_eeprom(uint16_t addr)
+{
+    unsigned long val = 0L;
+    for(int step=0; step < 4; step++)
+    {
+        byte tmp_byte = EEPROM.read(addr);
+        val = (val << 8) | tmp_byte;
+        addr++;
+    }
+    return val;
+}
+
+void write_eeprom(uint16_t addr, unsigned long val)
+{
+    for(int step=3; step >= 0; step--)
+    {
+        byte tmp_byte = val & 0xFF;
+        EEPROM.write(addr+step, tmp_byte);
+        val = val >> 8;
+    }
+  
+    /***
+    The function EEPROM.update(address, val) is equivalent to the following:
+  
+    if( EEPROM.read(address) != val ){
+      EEPROM.write(address, val);
+    }
+  ***/
+}
+
+unsigned long odometr_last_save = 0L;
+
+void write_odometr(unsigned long val)
+{
+    if(odometr_last_save != val)
+    {
+        Serial.print(F("Write odometr:"));
+        Serial.println(val, DEC);
+        uint16_t addr = 0;
+        for(int step=0; step < 4; step++)
+        {
+            write_eeprom(addr, val);
+            addr+=4;
+        }
+        odometr_last_save = val;
+    }    
+}
 
 
 byte decToBcd(byte val)
@@ -93,11 +144,16 @@ void printBME280CalculatedData(Stream* client);
 
 void setup() {
 
-  
-  // put your setup code here, to run once  AAA:
-  Wire.begin();
   Serial.begin(SERIAL_BAUD);
-  //while(!Serial) {} // Wait
+  //while(!Serial) {} // wait for serial port to connect. Needed for Leonardo only
+
+  unsigned long tmp_long = read_eeprom(0);
+  if( tmp_long != 0xAABBCCDD )
+  {
+      write_eeprom(0, 0xAABBCCDD);
+  }
+  
+  Wire.begin();
   
   // set the initial time here:
   // DS3232 seconds, minutes, hours, day, date, month, year
@@ -123,7 +179,7 @@ void setup() {
   
   while(!bme.begin())
   {
-    Serial.println("Could not find BME280 sensor!");
+    Serial.println(F("Could not find BME280 sensor!"));
     delay(1000);
   }
 
@@ -183,8 +239,8 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextColor(WHITE);
     display.setCursor(0,0);
     tmp_float = odometr_tics; 
-    //tmp_float = tmp_float  / (30 * 1000);
-    tmp_float = tmp_float * 2048  / (30 * 1000);
+    //tmp_float = tmp_float  / (ticks_per_meter * 1000);
+    tmp_float = tmp_float * 2048  / (ticks_per_meter * 1000);
     odometr = tmp_float;
     display.print(odometr, DEC); //print overall odometr
     display.setCursor(45,0);
@@ -218,7 +274,7 @@ void show_display(byte hour, byte minute, byte second)
     display.print(odometr - odometr_1); // print odometr 1
   
     display.setCursor(80,40);
-    display.print("13.5"); // Voltage
+    display.print(F("13.5")); // Voltage
   
     //display.drawChar(80, 20, 'B', 0, 1, 2);
   
@@ -237,6 +293,8 @@ void show_display(byte hour, byte minute, byte second)
   //Serial.print(elapsed, DEC);
   //Serial.print("/");
 }
+
+//---------------- DS3232 time -------------------------------------------------------
 
 void setDS3232time(byte second, byte minute, byte hour, byte dayOfWeek, byte
 dayOfMonth, byte month, byte year)
@@ -278,55 +336,60 @@ void read_time()
   byte dayOfWeek, dayOfMonth, month, year;
   // retrieve data from DS3232
   readDS3232time(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
-   
-  // send it to the serial monitor
-  Serial.print(hour, DEC);
-  // convert the byte variable to a decimal number when displayed
-  Serial.print(":");
-  if (minute<10)
-  {
-    Serial.print("0");
-  }
-  Serial.print(minute, DEC);
-  Serial.print(":");
-  if (second<10)
-  {
-    Serial.print("0");
-  }
-  Serial.print(second, DEC);
-  Serial.print(" ");
-  
-  Serial.print(year, DEC);
-  Serial.print("/");
-  Serial.print(month, DEC);
-  Serial.print("/");
-  Serial.print(dayOfMonth, DEC);
+
+  if(false)
+  {// used for debug
+      // send it to the serial monitor
+      Serial.print(hour, DEC);
+      // convert the byte variable to a decimal number when displayed
+      Serial.print(":");
+      if (minute<10)
+      {
+        Serial.print("0");
+      }
+      Serial.print(minute, DEC);
+      Serial.print(":");
+      if (second<10)
+      {
+        Serial.print("0");
+      }
+      Serial.print(second, DEC);
+      Serial.print(" ");
       
-  Serial.print(" Day of week: ");
-  switch(dayOfWeek){
-  case 1:
-  Serial.println("Sunday");
-  break;
-  case 2:
-  Serial.println("Monday");
-  break;
-  case 3:
-  Serial.println("Tuesday");
-  break;
-  case 4:
-  Serial.println("Wednesday");
-  break;
-  case 5:
-  Serial.println("Thursday");
-  break;
-  case 6:
-  Serial.println("Friday");
-  break;
-  case 7:
-  Serial.println("Saturday");
-  break;
+      Serial.print(year, DEC);
+      Serial.print("/");
+      Serial.print(month, DEC);
+      Serial.print("/");
+      Serial.print(dayOfMonth, DEC);
+          
+      Serial.print(F(" Day of week: "));
+      switch(dayOfWeek){
+        case 1:
+          Serial.println(F("Sunday"));
+          break;
+        case 2:
+          Serial.println(F("Monday"));
+          break;
+        case 3:
+          Serial.println(F("Tuesday"));
+          break;
+        case 4:
+          Serial.println(F("Wednesday"));
+          break;
+        case 5:
+          Serial.println(F("Thursday"));
+          break;
+        case 6:
+          Serial.println(F("Friday"));
+          break;
+        case 7:
+          Serial.println(F("Saturday"));
+          break;
+      }
   }
 }
+
+//---------------- END DS3232 time -------------------------------------------------------
 
 
 
@@ -346,14 +409,16 @@ int memoryFree()
 
 unsigned long previous_mrs = 0;
 unsigned long current_mrs;
-long interval = 3000; // us
-int ledState = LOW;
+uint16_t interval = 3000; // us
+bool ledState = LOW;
 
 int read_bme_counter = 0;
+int write_odometr_counter = 0;
 
 uint16_t final_delay;
 
-int tmp;
+//int tmp;
+int tmp_int;
 uint16_t pin_push_counter;
 
 void loop() {
@@ -366,13 +431,20 @@ void loop() {
   bitSet(TCCR1B, CS11);
 
   speed_pulses += int_per_loop_display;
-  tmp = speed_pulses >> 11; // /2048
-  if( tmp > 0 )
+  tmp_int = speed_pulses >> 11; // /2048
+  if( tmp_int > 0 )
   {
     speed_pulses &= 0x7FF;
     //odometr += 1;
-    odometr_tics += tmp;
+    odometr_tics += tmp_int;
   }  
+
+  write_odometr_counter++;
+  if(( int_per_loop_display == 0 ) || (write_odometr_counter > 1800))
+  {// if there are no impulses -> stop happens. OR 30min moving.
+      write_odometr(odometr_tics);
+      write_odometr_counter = 0;
+  }
   
   Serial.println("");
   memory_free = memoryFree();
@@ -383,7 +455,7 @@ void loop() {
   if(read_bme_counter <= 0)
   {
     read_bme();
-    read_bme_counter = 10;
+    read_bme_counter = 20;
   }
   else
     read_bme_counter--;
@@ -393,13 +465,13 @@ void loop() {
   finished = millis();
   elapsed = finished - start;
   Serial.print(elapsed, DEC);
-  Serial.print(" ms. ");
+  Serial.print(F(" ms. "));
   
   //printBME280Data(&Serial);
   //printBME280CalculatedData(&Serial);
 
   Serial.print(elapsed_loop, DEC);
-  Serial.print(" us. ");
+  Serial.print(F(" us. "));
 
   
   pin_push_counter = 0;
@@ -410,18 +482,16 @@ void loop() {
     final_delay = 1000 - elapsed_loop/1000; // ms from every second
     if(final_delay <= 0)
       break;
-    //if(final_delay > 0)
-      // delay(final_delay-1); // every second
 
     if(final_delay < 800)
     {// litle pause for prevent secondary push
         //current_mrs = micros();
-      tmp = digitalRead(BUTTON1_PIN);   // read the input pin
+      tmp_int = digitalRead(BUTTON1_PIN);   // read the input pin
       //current_mrs = micros() - current_mrs;
       //Serial.print(" digRead,us: ");
       //Serial.print(current_mrs, DEC); // 8 uS
       
-      if ( tmp == 0 )
+      if ( tmp_int == 0 )
       {
         Serial.print("Pin captured.");
         pin_push_counter++;
