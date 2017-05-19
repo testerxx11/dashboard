@@ -57,7 +57,7 @@ unsigned long start_loop, finished_loop, elapsed_loop;
 
 uint16_t ticks_per_meter = 30;
 unsigned long speed_pulses = 0;
-unsigned long odometr_tics = 256009 * 1000 / 2048 * ticks_per_meter;
+unsigned long odometr_tics = 256009 * 1000 / 8 * ticks_per_meter;
 
 
 unsigned long odometr = 256009;
@@ -78,6 +78,8 @@ unsigned long read_eeprom(uint16_t addr)
     for(int step=0; step < 4; step++)
     {
         byte tmp_byte = EEPROM.read(addr);
+        Serial.println(F("read eeprom:"));
+        Serial.println(tmp_byte, HEX);
         val = (val << 8) | tmp_byte;
         addr++;
     }
@@ -89,6 +91,8 @@ void write_eeprom(uint16_t addr, unsigned long val)
     for(int step=3; step >= 0; step--)
     {
         byte tmp_byte = val & 0xFF;
+        //Serial.println(F("write eeprom:"));
+        //Serial.println(tmp_byte, HEX);
         EEPROM.write(addr+step, tmp_byte);
         val = val >> 8;
     }
@@ -109,7 +113,7 @@ void write_odometr(unsigned long val)
     if(odometr_last_save != val)
     {
         Serial.print(F("Write odometr:"));
-        Serial.println(val, DEC);
+        Serial.println(val, HEX);
         uint16_t addr = 0;
         for(int step=0; step < 4; step++)
         {
@@ -147,11 +151,21 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   //while(!Serial) {} // wait for serial port to connect. Needed for Leonardo only
 
-  unsigned long tmp_long = read_eeprom(0);
-  if( tmp_long != 0xAABBCCDD )
-  {
-      write_eeprom(0, 0xAABBCCDD);
-  }
+  unsigned long tmp_long;
+//  delay(15000);
+//  unsigned long test_odo = 960030720; //0xAABBCCDF;
+//  tmp_long = read_eeprom(0);
+//  if( tmp_long != test_odo )
+//  {
+//      Serial.print(F("Read odometr:"));
+//      Serial.println(tmp_long, HEX);
+//      //write_eeprom(0, test_odo);
+//      write_odometr(test_odo);
+//  }
+//  delay(60000);
+
+  tmp_long = read_eeprom(0);
+  odometr_tics = tmp_long;
   
   Wire.begin();
   
@@ -240,7 +254,7 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(0,0);
     tmp_float = odometr_tics; 
     //tmp_float = tmp_float  / (ticks_per_meter * 1000);
-    tmp_float = tmp_float * 2048  / (ticks_per_meter * 1000);
+    tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
     odometr = tmp_float;
     display.print(odometr, DEC); //print overall odometr
     display.setCursor(45,0);
@@ -431,11 +445,12 @@ void loop() {
   bitSet(TCCR1B, CS11);
 
   speed_pulses += int_per_loop_display;
-  tmp_int = speed_pulses >> 11; // /2048
+  //tmp_int = speed_pulses >> 11; // /2048
+  tmp_int = speed_pulses >> 3; // /8
   if( tmp_int > 0 )
   {
-    speed_pulses &= 0x7FF;
-    //odometr += 1;
+    //speed_pulses &= 0x7FF;
+    speed_pulses &= 0x7;
     odometr_tics += tmp_int;
   }  
 
