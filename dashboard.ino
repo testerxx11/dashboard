@@ -3,6 +3,7 @@
 
 #include <SPI.h>
 #include <Adafruit_GFX.h>
+//https://github.com/adafruit/Adafruit_SSD1306
 #include <Adafruit_SSD1306.h>
 
 #include <BME280I2C.h>
@@ -240,7 +241,7 @@ void show_display(byte hour, byte minute, byte second)
 {
   display.clearDisplay();
 
-  if(path[0] == 4)
+  if(path[0] == 5)
   {// DBG mode
     display.setTextSize(1);
     display.setCursor(0,0);
@@ -254,20 +255,25 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(0,40);
     display.print(int_taxo_per_loop_display, DEC);
   }
-  else if(path[0] == 3)
+  else if(path[0] == 4)
   {
     display.setTextSize(2);
     display.print(F("SETTINGS"));
   }
+  else if(path[0] == 3)
+  {
+    display.setTextSize(2);
+    display.print(F("METEO"));
+  }
   else if(path[0] == 2)
   {
     display.setTextSize(2);
-    display.print(F("SPEED"));
+    display.print(F("GEAR"));
   }
   else if(path[0] == 1)
   {
     display.setTextSize(2);
-    display.print(F("WEATHER"));
+    display.print(F("SPEED"));
   }
   else // default path[0] == 0
   {
@@ -299,6 +305,10 @@ void show_display(byte hour, byte minute, byte second)
     display.print(" %");
   
     display.setTextSize(2);
+    
+    display.setCursor(80,40);
+    display.print(F("13.5")); // Voltage
+    
     display.setCursor(100,0);
     display.print(temp, 0); // print temperature
     display.drawPixel(127, 0, WHITE);
@@ -306,20 +316,32 @@ void show_display(byte hour, byte minute, byte second)
     display.drawPixel(127, 1, WHITE);
     display.drawPixel(126, 1, WHITE);
     
-    display.setCursor(10,50);
-    display.print(odometr - odometr_1); // print odometr 1
-  
-    display.setCursor(80,40);
-    display.print(F("13.5")); // Voltage
-  
-    //display.drawChar(80, 20, 'B', 0, 1, 2);
-  
+    
+    if (( level_deep == 1) && ( path[1] = 0))
+    {// inside screen, selected odo 0
+        display.setTextColor(BLACK, WHITE); // 'inverted' text
+    }
+    
     display.setTextSize(3);
     display.setCursor(10,20);
     //display.print(odometr_0_show); // print odometr 0
     display.print(odometr - odometr_0); // print odometr 0
   
     display.fillCircle(3, 26, 3, WHITE);
+    
+    if (( level_deep == 1) && ( path[1] = 1))
+    {// inside screen , selected odo 1
+        display.setTextColor(BLACK, WHITE); // 'inverted' text
+    }
+    else
+        display.setTextColor(WHITE);
+    
+    display.setTextSize(2);
+    display.setCursor(10,50);
+    display.print(odometr - odometr_1); // print odometr 1
+  
+    //display.drawChar(80, 20, 'B', 0, 1, 2);
+    
   }  // END default path[0] == 0
  
   //start = millis();
@@ -577,12 +599,12 @@ void button_processing(byte btn_numb)
         if ( btn_numb == BUTTON_DWN_PIN)
         {
             path[0]++;
-            if ( path[0] > 4 ) path[0] = 0;
+            if ( path[0] > 5 ) path[0] = 0;
         }
         else if ( btn_numb == BUTTON_UP_PIN)
         {
             path[0]--;
-            if ( path[0] < 0 ) path[0] = 4;
+            if ( path[0] < 0 ) path[0] = 5;
         }
         else if ( btn_numb == BUTTON_ENT_PIN)
         {// enter to screen
