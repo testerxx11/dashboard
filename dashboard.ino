@@ -42,7 +42,10 @@ bool metric = true;
 const byte PWM_PIN=3; // D3 nano
 const byte SPEED_SENSOR_PIN=2; // D2 nano
 const byte TAXOMETR_PIN=3; // D3 nano
-const byte BUTTON1_PIN=4; // D4 nano
+const byte BUTTON_DWN_PIN=4; // D4 nano
+const byte BUTTON_UP_PIN=5; // ??  
+const byte BUTTON_ENT_PIN=6; // ??
+const byte BUTTON_ESC_PIN=7; // ??
 //const int ICP_PIN=8; // D8 nano
 //T1 = D5 nano
 
@@ -70,7 +73,10 @@ float speed = 0.0;
 //uint16_t temp = 66;
 uint16_t memory_free;
 
-byte display_mode = 0; // 0 - default(odometers); 1 - speedo/taxo; 2 - meteo; 6 - DBG
+//byte display_mode = 0; // 0 - default(odometers); 1 - speedo/taxo; 2 - meteo; 6 - DBG
+
+int8_t path [4] = {0, -1, -1, -1};
+int8_t level_deep = 0;
 
 unsigned long read_eeprom(uint16_t addr)
 {
@@ -206,9 +212,14 @@ void setup() {
 
   TCCR1A=0; //reset timer/counter control register A
 
-  pinMode(BUTTON1_PIN, INPUT);
-  digitalWrite(BUTTON1_PIN, 1);
-
+  pinMode(BUTTON_DWN_PIN, INPUT);
+  digitalWrite(BUTTON_DWN_PIN, 1);
+  pinMode(BUTTON_UP_PIN, INPUT);
+  digitalWrite(BUTTON_UP_PIN, 1);
+  pinMode(BUTTON_ENT_PIN, INPUT);
+  digitalWrite(BUTTON_ENT_PIN, 1);
+  pinMode(BUTTON_ESC_PIN, INPUT);
+  digitalWrite(BUTTON_ESC_PIN, 1);
   
 
 }
@@ -229,7 +240,7 @@ void show_display(byte hour, byte minute, byte second)
 {
   display.clearDisplay();
 
-  if(display_mode == 6)
+  if(path[0] == 4)
   {// DBG mode
     display.setTextSize(1);
     display.setCursor(0,0);
@@ -243,11 +254,22 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(0,40);
     display.print(int_taxo_per_loop_display, DEC);
   }
-  else if(display_mode == 2)
+  else if(path[0] == 3)
   {
-    //TODO
+    display.setTextSize(2);
+    display.print(F("SETTINGS"));
   }
-  else // default display_mode == 0
+  else if(path[0] == 2)
+  {
+    display.setTextSize(2);
+    display.print(F("SPEED"));
+  }
+  else if(path[0] == 1)
+  {
+    display.setTextSize(2);
+    display.print(F("WEATHER"));
+  }
+  else // default path[0] == 0
   {
     display.setTextSize(1);
     display.setTextColor(WHITE);
@@ -298,7 +320,7 @@ void show_display(byte hour, byte minute, byte second)
     display.print(odometr - odometr_0); // print odometr 0
   
     display.fillCircle(3, 26, 3, WHITE);
-  }  // END default display_mode == 0
+  }  // END default path[0] == 0
  
   //start = millis();
   display.display();
@@ -435,100 +457,161 @@ uint16_t final_delay;
 int tmp_int;
 uint16_t pin_push_counter;
 
-void loop() {
-  int_per_loop = 0;
-  int_taxo_per_loop = 0;
-  start_loop = micros();
+void loop() 
+{
+    int_per_loop = 0;
+    int_taxo_per_loop = 0;
+    start_loop = micros();
 
-  // Set Counter Clock is external pin
-  bitSet(TCCR1B, CS12);
-  bitSet(TCCR1B, CS11);
+    // Set Counter Clock is external pin
+    bitSet(TCCR1B, CS12);
+    bitSet(TCCR1B, CS11);
 
-  speed_pulses += int_per_loop_display;
-  //tmp_int = speed_pulses >> 11; // /2048
-  tmp_int = speed_pulses >> 3; // /8
-  if( tmp_int > 0 )
-  {
-    //speed_pulses &= 0x7FF;
-    speed_pulses &= 0x7;
-    odometr_tics += tmp_int;
-  }  
+    speed_pulses += int_per_loop_display;
+    //tmp_int = speed_pulses >> 11; // /2048
+    tmp_int = speed_pulses >> 3; // /8
+    if( tmp_int > 0 )
+    {
+        //speed_pulses &= 0x7FF;
+        speed_pulses &= 0x7;
+        odometr_tics += tmp_int;
+    }  
 
-  write_odometr_counter++;
-  if(( int_per_loop_display == 0 ) || (write_odometr_counter > 1800))
-  {// if there are no impulses -> stop happens. OR 30min moving.
-      write_odometr(odometr_tics);
-      write_odometr_counter = 0;
-  }
-  
-  Serial.println("");
-  memory_free = memoryFree();
-  Serial.println(memory_free);
-  
-  read_time(); // display the real-time clock data on the Serial Monitor
-
-  if(read_bme_counter <= 0)
-  {
-    read_bme();
-    read_bme_counter = 20;
-  }
-  else
-    read_bme_counter--;
-
-  start = millis();
-  show_display(hour, minute, second);
-  finished = millis();
-  elapsed = finished - start;
-  Serial.print(elapsed, DEC);
-  Serial.print(F(" ms. "));
-  
-  //printBME280Data(&Serial);
-  //printBME280CalculatedData(&Serial);
-
-  Serial.print(elapsed_loop, DEC);
-  Serial.print(F(" us. "));
-
-  
-  pin_push_counter = 0;
-  while(true)
-  {
-    finished_loop = micros();
-    elapsed_loop = finished_loop - start_loop; // us
-    final_delay = 1000 - elapsed_loop/1000; // ms from every second
-    if(final_delay <= 0)
-      break;
-
-    if(final_delay < 800)
-    {// litle pause for prevent secondary push
-        //current_mrs = micros();
-      tmp_int = digitalRead(BUTTON1_PIN);   // read the input pin
-      //current_mrs = micros() - current_mrs;
-      //Serial.print(" digRead,us: ");
-      //Serial.print(current_mrs, DEC); // 8 uS
-      
-      if ( tmp_int == 0 )
-      {
-        Serial.print("Pin captured.");
-        pin_push_counter++;
-        if( pin_push_counter > 10  )
-        {
-          if( display_mode == 0)
-            display_mode = 6;
-          else
-            display_mode = 0;
-            break;
-        }
-      }
+    write_odometr_counter++;
+    if(( int_per_loop_display == 0 ) || (write_odometr_counter > 1800))
+    {// if there are no impulses -> stop happens. OR 30min moving.
+        write_odometr(odometr_tics);
+        write_odometr_counter = 0;
     }
-  }
+      
+    Serial.println("");
+    memory_free = memoryFree();
+    Serial.println(memory_free);
+      
+    read_time(); // display the real-time clock data on the Serial Monitor
+
+    if(read_bme_counter <= 0)
+    {
+        read_bme();
+        read_bme_counter = 20;
+    }
+    else
+        read_bme_counter--;
+
+    start = millis();
+    show_display(hour, minute, second);
+    finished = millis();
+    elapsed = finished - start;
+    Serial.print(elapsed, DEC);
+    Serial.print(F(" ms. "));
+
+    //printBME280Data(&Serial);
+    //printBME280CalculatedData(&Serial);
+
+    Serial.print(elapsed_loop, DEC);
+    Serial.print(F(" us. "));
+
+
+    byte btn_list [4]  = {BUTTON_DWN_PIN, BUTTON_UP_PIN, BUTTON_ENT_PIN, BUTTON_ESC_PIN };
+  
+    pin_push_counter = 0;
+    int last_pin_press = 0;
+    while(true)
+    { //btn read cycle
+        finished_loop = micros();
+        elapsed_loop = finished_loop - start_loop; // us
+        final_delay = 1000 - elapsed_loop/1000; // ms from every second
+        if(final_delay <= 0)
+          break;
+
+        if(final_delay < 800)
+        {// litle pause for prevent secondary push
+            bool break_btn_read_cycle = false;
+            //current_mrs = micros();
+            for( int step = 0; step < 4; step++ )
+            {// read all buttons
+                tmp_int = digitalRead(btn_list[step]); // read the input pin 8 uS
+
+                if ( tmp_int == 0 )
+                {
+                    Serial.print("Pin captured.");
+                    if( last_pin_press != step)
+                    {    
+                        last_pin_press = step;
+                        pin_push_counter = 0;
+                    }
+                    else
+                        pin_push_counter++;
+                    
+                    if( pin_push_counter > 10  )
+                    {
+                        button_processing(btn_list[step]);
+                        break_btn_read_cycle = true;
+                        break;
+                    }
+                }
+            }          
+            //current_mrs = micros() - current_mrs;
+            //Serial.print(" digRead,us: ");
+            //Serial.print(current_mrs, DEC); // 8 uS
+            if ( break_btn_read_cycle == true )
+              break;
+        }
+    
+    }//end btn read cycle
   
   
-  //Serial.print(int_per_loop, DEC);  
-  int_per_loop_display = int_per_loop;
-  //int_taxo_per_loop_display = int_taxo_per_loop;
-  TCCR1B=0; // Stop counter
-  int_taxo_per_loop_display = TCNT1;
-  TCNT1=0;
+    //Serial.print(int_per_loop, DEC);  
+    int_per_loop_display = int_per_loop;
+    //int_taxo_per_loop_display = int_taxo_per_loop;
+    TCCR1B=0; // Stop counter
+    int_taxo_per_loop_display = TCNT1;
+    TCNT1=0;
+      
+} // end loop
+
+void button_processing(byte btn_numb)
+{
+    if ( level_deep == 0 )
+    {// level 0 - root screens
+        if ( btn_numb == BUTTON_DWN_PIN)
+        {
+            path[0]++;
+            if ( path[0] > 4 ) path[0] = 0;
+        }
+        else if ( btn_numb == BUTTON_UP_PIN)
+        {
+            path[0]--;
+            if ( path[0] < 0 ) path[0] = 4;
+        }
+        else if ( btn_numb == BUTTON_ENT_PIN)
+        {// enter to screen
+            // TODO
+            level_deep = 1;
+            path[1] = -1; // by default - nothing
+            if( path[0] == 0 )
+            {// if overal screen
+                path[1] = 0; // select 0 odo
+            }
+        }
+        else // = BUTTON_ESC_PIN
+            path[0] = 0;
+        
+    }//end level 0 - root screens
+    else if ( level_deep == 1 )
+    {// level 1 - inside screen
+        if ( btn_numb == BUTTON_ESC_PIN)
+        {
+            level_deep = 0;
+        }
+        else if (( btn_numb == BUTTON_DWN_PIN) || ( btn_numb == BUTTON_UP_PIN))
+        {
+            path[1] = (~path[1]) & 0x1; // 0->1 1->0 
+        }
+        
+    }//end level 1 - inside screen
+    
+ 
 }
 
 void loopDBG() {
