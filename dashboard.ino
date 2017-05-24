@@ -44,9 +44,9 @@ const byte PWM_PIN=3; // D3 nano
 const byte SPEED_SENSOR_PIN=2; // D2 nano
 const byte TAXOMETR_PIN=3; // D3 nano
 const byte BUTTON_DWN_PIN=4; // D4 nano
-const byte BUTTON_UP_PIN=5; // ??  
-const byte BUTTON_ENT_PIN=6; // ??
-const byte BUTTON_ESC_PIN=7; // ??
+const byte BUTTON_UP_PIN=5; // D5 nano
+const byte BUTTON_ENT_PIN=6; // D6 nano
+const byte BUTTON_ESC_PIN=7; // D7 nano
 //const int ICP_PIN=8; // D8 nano
 //T1 = D5 nano
 
@@ -64,10 +64,10 @@ unsigned long speed_pulses = 0;
 unsigned long odometr_tics = 256009 * 1000 / 8 * ticks_per_meter;
 
 
-unsigned long odometr = 256009;
+//unsigned long odometr = 256009;
 unsigned long odometr_0 = 256009 - 259;
 unsigned long odometr_1 = 256009 - 1050;
-uint16_t odometr_0_show = 259;
+//uint16_t odometr_0_show = 259;
 
 float speed = 0.0;
 float tmp_float;
@@ -138,7 +138,8 @@ void write_eeprom(uint16_t addr, unsigned long val)
 // 18 19 1A 1B reserved for odometr 2
 // 1C 1D 1E 1F reserved for odometr 3
 // 20 21 22 23 reserved for odometr 4
-// 24
+// 24 25       ticks_per_meter (24 reserved for hi byte)
+// 26
 
 unsigned long odometr_last_save = 0L;
 
@@ -164,12 +165,12 @@ void reset_odometr(int8_t odo_numb)
     if( odo_numb == 0 )
     {
         write_eeprom(0x10, odometr_tics);
-        odometr_0 = odometr;
+        odometr_0 = odometr_tics;
     }
     else if( odo_numb == 1 )
     {
         write_eeprom(0x14, odometr_tics);
-        odometr_1 = odometr;
+        odometr_1 = odometr_tics;
     }
 }
 
@@ -215,6 +216,8 @@ void setup() {
 
   tmp_long = read_eeprom(0);
   odometr_tics = tmp_long;
+  odometr_0 = odometr_tics; // TODO
+  odometr_1 = odometr_tics; // TODO
   
   Wire.begin();
   
@@ -302,6 +305,14 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(2);
     display.setCursor(0,0);
     display.print(F("SETTINGS"));
+    
+    if (( level_deep == 1) && ( path[1] == 0))
+    {// inside screen, select tiks per meter
+        display.setCursor(10,20);
+        display.print(F("TICKS PER METER"));
+    }
+    
+    
   }
   else if(path[0] == 3)
   {
@@ -329,8 +340,9 @@ void show_display(byte hour, byte minute, byte second)
     //tmp_float = odometr_tics; 
     //tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
     //odometr = tmp_float;
-    odometr = convert_odometer_ticks_to_km(odometr_tics);
-    display.print(odometr, DEC); //print overall odometr
+    unsigned long tmp_ulong;
+    tmp_ulong = convert_odometer_ticks_to_km(odometr_tics);
+    display.print(tmp_ulong, DEC); //print overall odometer
     display.setCursor(45,0);
     display.print(hour, DEC); //print time
     display.print(":");
@@ -363,6 +375,8 @@ void show_display(byte hour, byte minute, byte second)
     display.drawPixel(126, 1, WHITE);
     
     //--------- odometers ------------------------------------
+    uint16_t tmp16;
+    uint8_t tmp8;
     if (( level_deep == 1) && ( path[1] == 0))
     {// inside screen, selected odo 0
         display.setTextColor(BLACK, WHITE); // 'inverted' text
@@ -374,7 +388,16 @@ void show_display(byte hour, byte minute, byte second)
     if(( level_deep == 2 ) && ( path[1] == 0 ))
         display.print(F("RESET?"));
     else
-        display.print(odometr - odometr_0); // print odometr 0
+    {
+        tmp16 = (uint16_t) ((odometr_0 - odometr_tics) * 8  / (ticks_per_meter)); // get meters
+        tmp8 = tmp16 % 1000; // get remaind meters
+        tmp8 = tmp8 / 100; // 800m -> 8
+        tmp16 = tmp16 / 1000; // m -> km
+        display.print(tmp16); // print odometr 0
+        display.setTextSize(2);
+        display.print(".");
+        display.print(tmp8);
+    }
   
     display.fillCircle(3, 26, 3, WHITE);
     
@@ -390,7 +413,7 @@ void show_display(byte hour, byte minute, byte second)
     if(( level_deep == 2 ) && ( path[1] == 1 ))
         display.print(F("RESET?"));
     else
-        display.print(odometr - odometr_1); // print odometr 1
+        display.print("TODO"); // print odometr 1
     
     //--------- end odometers ------------------------------------
   
@@ -664,12 +687,15 @@ void button_processing(byte btn_numb)
         }
         else if ( btn_numb == BUTTON_ENT_PIN)
         {// enter to screen
-            // TODO
             level_deep = 1;
             path[1] = -1; // by default - nothing
             if( path[0] == SCREEN_MAIN )
             {// if overal screen
                 path[1] = 0; // select 0 odo
+            }
+            else if ( path[0] == SCREEN_SETTINGS ) 
+            {
+                path[1] = 0; // select tiks per meter
             }
         }
         else // = BUTTON_ESC_PIN
