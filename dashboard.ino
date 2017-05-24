@@ -258,21 +258,25 @@ void show_display(byte hour, byte minute, byte second)
   else if(path[0] == 4)
   {
     display.setTextSize(2);
+    display.setCursor(0,0);
     display.print(F("SETTINGS"));
   }
   else if(path[0] == 3)
   {
     display.setTextSize(2);
+    display.setCursor(0,0);
     display.print(F("METEO"));
   }
   else if(path[0] == 2)
   {
     display.setTextSize(2);
+    display.setCursor(0,0);
     display.print(F("GEAR"));
   }
   else if(path[0] == 1)
   {
     display.setTextSize(2);
+    display.setCursor(0,0);
     display.print(F("SPEED"));
   }
   else // default path[0] == 0
@@ -317,7 +321,7 @@ void show_display(byte hour, byte minute, byte second)
     display.drawPixel(126, 1, WHITE);
     
     
-    if (( level_deep == 1) && ( path[1] = 0))
+    if (( level_deep == 1) && ( path[1] == 0))
     {// inside screen, selected odo 0
         display.setTextColor(BLACK, WHITE); // 'inverted' text
     }
@@ -329,7 +333,7 @@ void show_display(byte hour, byte minute, byte second)
   
     display.fillCircle(3, 26, 3, WHITE);
     
-    if (( level_deep == 1) && ( path[1] = 1))
+    if (( level_deep == 1) && ( path[1] == 1))
     {// inside screen , selected odo 1
         display.setTextColor(BLACK, WHITE); // 'inverted' text
     }
@@ -506,9 +510,9 @@ void loop()
         write_odometr_counter = 0;
     }
       
-    Serial.println("");
-    memory_free = memoryFree();
-    Serial.println(memory_free);
+//    Serial.println("");
+      memory_free = memoryFree();
+//    Serial.println(memory_free);
       
     read_time(); // display the real-time clock data on the Serial Monitor
 
@@ -531,7 +535,7 @@ void loop()
     //printBME280CalculatedData(&Serial);
 
     Serial.print(elapsed_loop, DEC);
-    Serial.print(F(" us. "));
+    Serial.println(F(" us. "));
 
 
     byte btn_list [4]  = {BUTTON_DWN_PIN, BUTTON_UP_PIN, BUTTON_ENT_PIN, BUTTON_ESC_PIN };
@@ -556,7 +560,7 @@ void loop()
 
                 if ( tmp_int == 0 )
                 {
-                    Serial.print("Pin captured.");
+                    Serial.print(" captured.");
                     if( last_pin_press != step)
                     {    
                         last_pin_press = step;
@@ -594,6 +598,8 @@ void loop()
 
 void button_processing(byte btn_numb)
 {
+    Serial.print(" pin:");
+    Serial.println(btn_numb);
     if ( level_deep == 0 )
     {// level 0 - root screens
         if ( btn_numb == BUTTON_DWN_PIN)
@@ -632,6 +638,15 @@ void button_processing(byte btn_numb)
         }
         
     }//end level 1 - inside screen
+
+    Serial.print(" level_deep:");
+    Serial.print(level_deep);
+
+    Serial.print(" path[0]:");
+    Serial.print(path[0]);
+
+    Serial.print(" path[1]:");
+    Serial.println(path[1]);
     
  
 }
