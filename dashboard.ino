@@ -70,14 +70,29 @@ unsigned long odometr_1 = 256009 - 1050;
 uint16_t odometr_0_show = 259;
 
 float speed = 0.0;
+float tmp_float;
 
 //uint16_t temp = 66;
 uint16_t memory_free;
 
 //byte display_mode = 0; // 0 - default(odometers); 1 - speedo/taxo; 2 - meteo; 6 - DBG
+#define SCREEN_MAIN 0
+#define SCREEN_SETTINGS 4
+#define SCREEN_DBG 5
 
-int8_t path [4] = {0, -1, -1, -1};
+int8_t path [4] = {SCREEN_MAIN, -1, -1, -1};
 int8_t level_deep = 0;
+
+
+unsigned long convert_odometer_ticks_to_km(unsigned long odo_ticks)
+{
+    tmp_float = odo_ticks; 
+    tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
+    odo_ticks = tmp_float;
+    return odo_ticks;
+}
+
+
 
 unsigned long read_eeprom(uint16_t addr)
 {
@@ -113,6 +128,18 @@ void write_eeprom(uint16_t addr, unsigned long val)
   ***/
 }
 
+// eeprom memory maping
+// 00 01 02 03 odometr
+// 04 05 06 07 odometr check
+// 08 09 0A 0B odometr save copy
+// 0C 0D 0E 0F odometr save copy check
+// 10 11 12 13 odometr 0 ( start point )
+// 14 15 16 17 odometr 1 ( start point )
+// 18 19 1A 1B reserved for odometr 2
+// 1C 1D 1E 1F reserved for odometr 3
+// 20 21 22 23 reserved for odometr 4
+// 24
+
 unsigned long odometr_last_save = 0L;
 
 void write_odometr(unsigned long val)
@@ -129,6 +156,21 @@ void write_odometr(unsigned long val)
         }
         odometr_last_save = val;
     }    
+}
+
+void reset_odometr(int8_t odo_numb)
+{
+    // odo_numb: 0/1
+    if( odo_numb == 0 )
+    {
+        write_eeprom(0x10, odometr_tics);
+        odometr_0 = odometr;
+    }
+    else if( odo_numb == 1 )
+    {
+        write_eeprom(0x14, odometr_tics);
+        odometr_1 = odometr;
+    }
 }
 
 
@@ -235,13 +277,13 @@ void taxometr_interrupt()
   int_taxo_per_loop++;
 }
 
-float tmp_float;
+
 
 void show_display(byte hour, byte minute, byte second)
 {
   display.clearDisplay();
 
-  if(path[0] == 5)
+  if(path[0] == SCREEN_DBG)
   {// DBG mode
     display.setTextSize(1);
     display.setCursor(0,0);
@@ -255,7 +297,7 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(0,40);
     display.print(int_taxo_per_loop_display, DEC);
   }
-  else if(path[0] == 4)
+  else if(path[0] == SCREEN_SETTINGS)
   {
     display.setTextSize(2);
     display.setCursor(0,0);
@@ -279,15 +321,15 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(0,0);
     display.print(F("SPEED"));
   }
-  else // default path[0] == 0
+  else // default path[0] == 0 SCREEN_MAIN
   {
     display.setTextSize(1);
     display.setTextColor(WHITE);
     display.setCursor(0,0);
-    tmp_float = odometr_tics; 
-    //tmp_float = tmp_float  / (ticks_per_meter * 1000);
-    tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
-    odometr = tmp_float;
+    //tmp_float = odometr_tics; 
+    //tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
+    //odometr = tmp_float;
+    odometr = convert_odometer_ticks_to_km(odometr_tics);
     display.print(odometr, DEC); //print overall odometr
     display.setCursor(45,0);
     display.print(hour, DEC); //print time
@@ -320,7 +362,7 @@ void show_display(byte hour, byte minute, byte second)
     display.drawPixel(127, 1, WHITE);
     display.drawPixel(126, 1, WHITE);
     
-    
+    //--------- odometers ------------------------------------
     if (( level_deep == 1) && ( path[1] == 0))
     {// inside screen, selected odo 0
         display.setTextColor(BLACK, WHITE); // 'inverted' text
@@ -329,7 +371,10 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(3);
     display.setCursor(10,20);
     //display.print(odometr_0_show); // print odometr 0
-    display.print(odometr - odometr_0); // print odometr 0
+    if(( level_deep == 2 ) && ( path[1] == 0 ))
+        display.print(F("RESET?"));
+    else
+        display.print(odometr - odometr_0); // print odometr 0
   
     display.fillCircle(3, 26, 3, WHITE);
     
@@ -342,7 +387,12 @@ void show_display(byte hour, byte minute, byte second)
     
     display.setTextSize(2);
     display.setCursor(10,50);
-    display.print(odometr - odometr_1); // print odometr 1
+    if(( level_deep == 2 ) && ( path[1] == 1 ))
+        display.print(F("RESET?"));
+    else
+        display.print(odometr - odometr_1); // print odometr 1
+    
+    //--------- end odometers ------------------------------------
   
     //display.drawChar(80, 20, 'B', 0, 1, 2);
     
@@ -617,7 +667,7 @@ void button_processing(byte btn_numb)
             // TODO
             level_deep = 1;
             path[1] = -1; // by default - nothing
-            if( path[0] == 0 )
+            if( path[0] == SCREEN_MAIN )
             {// if overal screen
                 path[1] = 0; // select 0 odo
             }
@@ -632,12 +682,29 @@ void button_processing(byte btn_numb)
         {
             level_deep = 0;
         }
-        else if (( btn_numb == BUTTON_DWN_PIN) || ( btn_numb == BUTTON_UP_PIN))
+        else if ( path[0] == SCREEN_MAIN )
         {
-            path[1] = (~path[1]) & 0x1; // 0->1 1->0 
+            if (( btn_numb == BUTTON_DWN_PIN) || ( btn_numb == BUTTON_UP_PIN))
+                path[1] = (~path[1]) & 0x1; // 0->1 1->0 change pos selected odometr
+            else if ( btn_numb == BUTTON_ENT_PIN)
+            {// select odo to reset
+                level_deep = 2;
+            }
         }
         
     }//end level 1 - inside screen
+    else if ( level_deep == 2 )
+    {
+        if ( btn_numb == BUTTON_ESC_PIN)
+        {
+            level_deep = 1;
+        }
+        else if (( path[0] == SCREEN_MAIN ) && ( btn_numb == BUTTON_ENT_PIN ))
+        {
+            reset_odometr(path[1]);
+            level_deep = 1;
+        }
+    }
 
     Serial.print(" level_deep:");
     Serial.print(level_deep);
