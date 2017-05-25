@@ -216,8 +216,8 @@ void setup() {
 
   tmp_long = read_eeprom(0);
   odometr_tics = tmp_long;
-  odometr_0 = odometr_tics; // TODO
-  odometr_1 = odometr_tics; // TODO
+  odometr_0 = read_eeprom(0x10); //odometr_tics; // TODO
+  odometr_1 = read_eeprom(0x14); //odometr_tics; // TODO
   
   Wire.begin();
   
@@ -376,7 +376,8 @@ void show_display(byte hour, byte minute, byte second)
     
     //--------- odometers ------------------------------------
     uint16_t tmp16;
-    uint8_t tmp8;
+    uint16_t tmp16_2;
+    //uint8_t tmp8;
     if (( level_deep == 1) && ( path[1] == 0))
     {// inside screen, selected odo 0
         display.setTextColor(BLACK, WHITE); // 'inverted' text
@@ -386,17 +387,18 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(10,20);
     //display.print(odometr_0_show); // print odometr 0
     if(( level_deep == 2 ) && ( path[1] == 0 ))
-        display.print(F("RESET?"));
+        display.print(F("RST?"));
     else
     {
-        tmp16 = (uint16_t) ((odometr_0 - odometr_tics) * 8  / (ticks_per_meter)); // get meters
-        tmp8 = tmp16 % 1000; // get remaind meters
-        tmp8 = tmp8 / 100; // 800m -> 8
+        //tmp16 = (uint16_t) ((odometr_0 - odometr_tics) * 8  / (ticks_per_meter * 1000)); // get meters
+        tmp16 = (uint16_t) ((odometr_tics - odometr_0) * 8  / (ticks_per_meter)); // get meters
+        tmp16_2 = tmp16 % 1000; // get remaind meters
+        tmp16_2 = tmp16_2 / 100; // 800m -> 8
         tmp16 = tmp16 / 1000; // m -> km
         display.print(tmp16); // print odometr 0
         display.setTextSize(2);
         display.print(".");
-        display.print(tmp8);
+        display.print(tmp16_2);
     }
   
     display.fillCircle(3, 26, 3, WHITE);
@@ -411,9 +413,13 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(2);
     display.setCursor(10,50);
     if(( level_deep == 2 ) && ( path[1] == 1 ))
-        display.print(F("RESET?"));
+        display.print(F("RST?"));
     else
-        display.print("TODO"); // print odometr 1
+    {
+        tmp16 = (odometr_tics - odometr_1) * 8  / ticks_per_meter; // get meters
+        tmp16 = tmp16 / 1000; // m -> km
+        display.print(tmp16); // print odometr 1
+    }
     
     //--------- end odometers ------------------------------------
   
