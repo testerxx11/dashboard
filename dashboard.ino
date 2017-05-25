@@ -50,6 +50,7 @@ const byte BUTTON_ESC_PIN=7; // D7 nano
 //const int ICP_PIN=8; // D8 nano
 //T1 = D5 nano
 
+// unsigned int 2 byte value 0 to 65,535 (2^16) - 1)
 volatile unsigned int int_per_loop;
 unsigned int int_per_loop_display;
 volatile unsigned int int_taxo_per_loop;
@@ -57,10 +58,11 @@ unsigned int int_taxo_per_loop_display;
 
 unsigned long start, finished, elapsed;
 
-unsigned long start_loop, finished_loop, elapsed_loop;
+unsigned long start_loop, finished_loop, loop_time_us;
 
 uint16_t ticks_per_meter = 30;
 unsigned long speed_pulses = 0;
+//unsigned long 32 bits (4 bytes) 0 to 4,294,967,295 (2^32 - 1)
 unsigned long odometr_tics = 256009 * 1000 / 8 * ticks_per_meter;
 
 
@@ -69,8 +71,7 @@ unsigned long odometr_0 = 256009 - 259;
 unsigned long odometr_1 = 256009 - 1050;
 //uint16_t odometr_0_show = 259;
 
-float speed = 0.0;
-float tmp_float;
+
 
 //uint16_t temp = 66;
 uint16_t memory_free;
@@ -80,12 +81,13 @@ uint16_t memory_free;
 #define SCREEN_SETTINGS 4
 #define SCREEN_DBG 5
 
-int8_t path [4] = {SCREEN_MAIN, -1, -1, -1};
+int16_t path [4] = {SCREEN_MAIN, -1, -1, -1};
 int8_t level_deep = 0;
 
 
 unsigned long convert_odometer_ticks_to_km(unsigned long odo_ticks)
 {
+    float tmp_float;
     tmp_float = odo_ticks; 
     tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
     odo_ticks = tmp_float;
@@ -173,6 +175,11 @@ void reset_odometr(int8_t odo_numb)
         odometr_1 = odometr_tics;
     }
 }
+
+// void change_ticks_per_meter(int8_t increment)
+// {
+    // ticks_per_meter += increment;
+// }
 
 
 byte decToBcd(byte val)
@@ -284,6 +291,9 @@ void taxometr_interrupt()
 
 void show_display(byte hour, byte minute, byte second)
 {
+  //float speed = 0.0;
+  uint16_t speed;
+      
   display.clearDisplay();
 
   if(path[0] == SCREEN_DBG)
@@ -294,7 +304,9 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(2);
     display.setCursor(0,20);
     display.print(int_per_loop_display, DEC); // print speed sensor, Hz
-    speed = int_per_loop_display * 0.108333;
+    //speed = int_per_loop_display * 0.108333;
+    //speed = ((int_per_loop_display/ticks_per_meter)/(loop_time_us / 1000000)) * 36 / 10;  // ((m)/(s)) /1000 * 3600       ((m)/(s))*36/10
+    speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36) / 30; //  speed = (((int_per_loop_display * 100000)/loop_time_us) * 36) / 30; 
     display.setCursor(60,20);
     display.print(speed, 1);
     display.setCursor(0,40);
@@ -305,12 +317,21 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(2);
     display.setCursor(0,0);
     display.print(F("SETTINGS"));
-    
-    if (( level_deep == 1) && ( path[1] == 0))
-    {// inside screen, select tiks per meter
-        display.setCursor(10,20);
-        display.print(F("TICKS PER METER"));
+
+    if ( level_deep == 1 )
+    {// inside screen
+        display.setCursor(5,20);
+        display.print(F("SHOW_DBG")); // TODO
+        display.setCursor(5,40);
+        display.print(F("TICKSpMETER"));
     }
+    else if (( level_deep == 2 ) && ( path[1] == 0 ))
+    {//select tiks per meter
+        display.setCursor(10,20);
+        display.print(F("TICKSpMETER:"));
+        display.print(path[2]);
+    }
+    
     
     
   }
@@ -375,9 +396,9 @@ void show_display(byte hour, byte minute, byte second)
     display.drawPixel(126, 1, WHITE);
     
     //--------- odometers ------------------------------------
+    uint32_t tmp32;
     uint16_t tmp16;
-    uint16_t tmp16_2;
-    //uint8_t tmp8;
+    
     if (( level_deep == 1) && ( path[1] == 0))
     {// inside screen, selected odo 0
         display.setTextColor(BLACK, WHITE); // 'inverted' text
@@ -391,14 +412,14 @@ void show_display(byte hour, byte minute, byte second)
     else
     {
         //tmp16 = (uint16_t) ((odometr_0 - odometr_tics) * 8  / (ticks_per_meter * 1000)); // get meters
-        tmp16 = (uint16_t) ((odometr_tics - odometr_0) * 8  / (ticks_per_meter)); // get meters
-        tmp16_2 = tmp16 % 1000; // get remaind meters
-        tmp16_2 = tmp16_2 / 100; // 800m -> 8
-        tmp16 = tmp16 / 1000; // m -> km
-        display.print(tmp16); // print odometr 0
+        tmp32 = (odometr_tics - odometr_0) * 8  / ticks_per_meter; // get meters
+        tmp16 = tmp32 % 1000; // get remaind meters
+        tmp16 = tmp16 / 100; // 800m -> 8
+        tmp32 = tmp32 / 1000; // m -> km
+        display.print(tmp32); // print odometr 0
         display.setTextSize(2);
         display.print(".");
-        display.print(tmp16_2);
+        display.print(tmp16);
     }
   
     display.fillCircle(3, 26, 3, WHITE);
@@ -416,9 +437,9 @@ void show_display(byte hour, byte minute, byte second)
         display.print(F("RST?"));
     else
     {
-        tmp16 = (odometr_tics - odometr_1) * 8  / ticks_per_meter; // get meters
-        tmp16 = tmp16 / 1000; // m -> km
-        display.print(tmp16); // print odometr 1
+        tmp32 = (odometr_tics - odometr_1) * 8  / ticks_per_meter / 1000; // get km
+        //tmp32 = tmp32 / 1000; // m -> km
+        display.print(tmp32); // print odometr 1
     }
     
     //--------- end odometers ------------------------------------
@@ -548,22 +569,21 @@ int memoryFree()
 
 
 
-unsigned long previous_mrs = 0;
-unsigned long current_mrs;
-uint16_t interval = 3000; // us
-bool ledState = LOW;
+//unsigned long previous_mrs = 0;
+//unsigned long current_mrs;
+//uint16_t interval = 3000; // us
+//bool ledState = LOW;
 
 int read_bme_counter = 0;
 int write_odometr_counter = 0;
 
-uint16_t final_delay;
-
-//int tmp;
-int tmp_int;
-uint16_t pin_push_counter;
 
 void loop() 
 {
+    int tmp_int;
+    uint16_t final_delay;
+    uint16_t pin_push_counter;
+    
     int_per_loop = 0;
     int_taxo_per_loop = 0;
     start_loop = micros();
@@ -613,7 +633,7 @@ void loop()
     //printBME280Data(&Serial);
     //printBME280CalculatedData(&Serial);
 
-    Serial.print(elapsed_loop, DEC);
+    Serial.print(loop_time_us, DEC);
     Serial.println(F(" us. "));
 
 
@@ -624,8 +644,8 @@ void loop()
     while(true)
     { //btn read cycle
         finished_loop = micros();
-        elapsed_loop = finished_loop - start_loop; // us
-        final_delay = 1000 - elapsed_loop/1000; // ms from every second
+        loop_time_us = finished_loop - start_loop; // us
+        final_delay = 1000 - loop_time_us/1000; // ms from every second
         if(final_delay <= 0)
           break;
 
@@ -668,6 +688,8 @@ void loop()
   
     //Serial.print(int_per_loop, DEC);  
     int_per_loop_display = int_per_loop;
+    finished_loop = micros();
+    loop_time_us = finished_loop - start_loop; // us
     //int_taxo_per_loop_display = int_taxo_per_loop;
     TCCR1B=0; // Stop counter
     int_taxo_per_loop_display = TCNT1;
@@ -712,7 +734,7 @@ void button_processing(byte btn_numb)
     {// level 1 - inside screen
         if ( btn_numb == BUTTON_ESC_PIN)
         {
-            level_deep = 0;
+            level_deep--;
         }
         else if ( path[0] == SCREEN_MAIN )
         {
@@ -723,18 +745,51 @@ void button_processing(byte btn_numb)
                 level_deep = 2;
             }
         }
+        else if ( path[0] == SCREEN_SETTINGS ) 
+        {
+            //TODO: add new settings
+            if (( btn_numb == BUTTON_ENT_PIN) && (path[1] == 0))
+            {// if enter to 'tiks per meter'
+                level_deep = 2;
+                path[2] = ticks_per_meter;
+            }
+        }
         
     }//end level 1 - inside screen
     else if ( level_deep == 2 )
     {
         if ( btn_numb == BUTTON_ESC_PIN)
         {
-            level_deep = 1;
+            level_deep--;
         }
         else if (( path[0] == SCREEN_MAIN ) && ( btn_numb == BUTTON_ENT_PIN ))
         {
             reset_odometr(path[1]);
             level_deep = 1;
+        }
+        else if ( path[0] == SCREEN_SETTINGS )
+        {
+            if (path[1] == 0)
+            {// 'tiks per meter'
+                if ( btn_numb == BUTTON_UP_PIN )
+                    path[2]++; //change_ticks_per_meter(1);
+                else if ( btn_numb == BUTTON_DWN_PIN )
+                    path[2]--; //change_ticks_per_meter(-1);
+                else if ( btn_numb == BUTTON_ENT_PIN )
+                {
+                    ticks_per_meter = path[2]; 
+                    // TODO: save to eeprom
+                    level_deep--;
+                }
+            }
+
+        }
+    }
+    else if ( level_deep == 3 )
+    {
+        if ( btn_numb == BUTTON_ESC_PIN)
+        {
+            level_deep--;
         }
     }
 
@@ -750,6 +805,7 @@ void button_processing(byte btn_numb)
  
 }
 
+/*
 void loopDBG() {
   // put your main code here, to run repeatedly:
   //displayTime(); // display the real-time clock data on the Serial Monitor,
@@ -784,7 +840,7 @@ void loopDBG() {
 //  delay(1);
   
 }
-
+*/
 
 uint8_t pressureUnit(3);
 
@@ -847,9 +903,10 @@ void printBME280Data(Stream* client){
   client->print(" atm");
 }
 
-float altitude, dewPoint;
+
 
 void printBME280CalculatedData(Stream* client){
+  float altitude, dewPoint;
   altitude = bme.alt(metric);
   dewPoint = bme.dew(metric);
   client->print(F("\tAlt:"));
