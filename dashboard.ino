@@ -296,6 +296,10 @@ void show_display(byte hour, byte minute, byte second)
       
   display.clearDisplay();
 
+  //speed = int_per_loop_display * 0.108333;
+  //speed = ((int_per_loop_display/ticks_per_meter)/(loop_time_us / 1000000)) * 36 / 10;  // ((m)/(s)) /1000 * 3600       ((m)/(s))*36/10
+  speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36) / 30; //  speed = (((int_per_loop_display * 100000)/loop_time_us) * 36) / 30; 
+  
   if(path[0] == SCREEN_DBG)
   {// DBG mode
     display.setTextSize(1);
@@ -304,9 +308,6 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(2);
     display.setCursor(0,20);
     display.print(int_per_loop_display, DEC); // print speed sensor, Hz
-    //speed = int_per_loop_display * 0.108333;
-    //speed = ((int_per_loop_display/ticks_per_meter)/(loop_time_us / 1000000)) * 36 / 10;  // ((m)/(s)) /1000 * 3600       ((m)/(s))*36/10
-    speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36) / 30; //  speed = (((int_per_loop_display * 100000)/loop_time_us) * 36) / 30; 
     display.setCursor(60,20);
     display.print(speed, 1);
     display.setCursor(0,40);
@@ -323,12 +324,13 @@ void show_display(byte hour, byte minute, byte second)
         display.setCursor(5,20);
         display.print(F("SHOW_DBG")); // TODO
         display.setCursor(5,40);
-        display.print(F("TICKSpMETER"));
+        display.print(F("TICKSpM"));
     }
     else if (( level_deep == 2 ) && ( path[1] == 0 ))
     {//select tiks per meter
-        display.setCursor(10,20);
-        display.print(F("TICKSpMETER:"));
+        display.setCursor(0,20);
+        display.print(F("TICKSpMET:"));
+        display.setCursor(40,45);
         display.print(path[2]);
     }
     
@@ -352,6 +354,9 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(2);
     display.setCursor(0,0);
     display.print(F("SPEED"));
+    display.setTextSize(3);
+    display.setCursor(0,20);
+    display.print(speed);
   }
   else // default path[0] == 0 SCREEN_MAIN
   {
