@@ -62,6 +62,7 @@ unsigned long start_loop, finished_loop, loop_time_us;
 
 uint16_t ticks_per_meter = 30;
 unsigned long speed_pulses = 0;
+uint16_t dbg_speed_counter = 0; // counter for debug/calibration
 //unsigned long 32 bits (4 bytes) 0 to 4,294,967,295 (2^32 - 1)
 unsigned long odometr_tics = 256009 * 1000 / 8 * ticks_per_meter;
 
@@ -92,6 +93,19 @@ unsigned long convert_odometer_ticks_to_km(unsigned long odo_ticks)
     tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
     odo_ticks = tmp_float;
     return odo_ticks;
+}
+
+uint8_t read_eeprom_byte(uint16_t addr)
+{
+    uint8_t tmp = EEPROM.read(addr);
+    return tmp;
+}
+
+void write_eeprom_byte(uint16_t addr, uint8_t val)
+{
+    uint8_t tmp = read_eeprom_byte(addr);
+    if( val != tmp )
+        EEPROM.write(addr, val);
 }
 
 
@@ -131,17 +145,20 @@ void write_eeprom(uint16_t addr, unsigned long val)
 }
 
 // eeprom memory maping
-// 00 01 02 03 odometr
-// 04 05 06 07 odometr check
-// 08 09 0A 0B odometr save copy
-// 0C 0D 0E 0F odometr save copy check
-// 10 11 12 13 odometr 0 ( start point )
-// 14 15 16 17 odometr 1 ( start point )
-// 18 19 1A 1B reserved for odometr 2
-// 1C 1D 1E 1F reserved for odometr 3
-// 20 21 22 23 reserved for odometr 4
-// 24 25       ticks_per_meter (24 reserved for hi byte)
-// 26
+// 00 01 02 03  odometr
+// 04 05 06 07  odometr check
+// 08 09 0A 0B  odometr save copy
+// 0C 0D 0E 0F  odometr save copy check
+// 10 11 12 13  odometr 0 ( start point )
+// 14 15 16 17  odometr 1 ( start point )
+// 18 19 1A 1B  reserved for odometr 2
+// 1C 1D 1E 1F  reserved for odometr 3
+// 20 21 22 23  reserved for odometr 4
+// 24 25        ticks_per_meter (24 reserved for hi byte)
+// 26           0xEE if data saved; if not - save default values (ticks_per_meter)
+// 27           free
+// 28 29 2A 2B  reserved for time-stamps
+// 2C
 
 unsigned long odometr_last_save = 0L;
 
@@ -174,12 +191,8 @@ void reset_odometr(int8_t odo_numb)
         write_eeprom(0x14, odometr_tics);
         odometr_1 = odometr_tics;
     }
+    write_odometr(odometr_tics);
 }
-
-// void change_ticks_per_meter(int8_t increment)
-// {
-    // ticks_per_meter += increment;
-// }
 
 
 byte decToBcd(byte val)
@@ -207,6 +220,15 @@ void setup() {
 
   Serial.begin(SERIAL_BAUD);
   //while(!Serial) {} // wait for serial port to connect. Needed for Leonardo only
+  
+  uint8_t tmp8 = read_eeprom_byte(0x26);
+  if ( tmp8 != 0xEE )
+  {// write default values
+      write_eeprom_byte(0x25, ticks_per_meter);
+      write_eeprom_byte(0x26, 0xEE);
+  }
+  
+  ticks_per_meter = (uint16_t) read_eeprom_byte(0x25);
 
   unsigned long tmp_long;
 //  delay(15000);
@@ -301,7 +323,7 @@ void show_display(byte hour, byte minute, byte second)
   speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36) / 30; //  speed = (((int_per_loop_display * 100000)/loop_time_us) * 36) / 30; 
   
   if(path[0] == SCREEN_DBG)
-  {// DBG mode
+  {// DBG screen
     display.setTextSize(1);
     display.setCursor(0,0);
     display.print(memory_free, DEC);
@@ -312,6 +334,11 @@ void show_display(byte hour, byte minute, byte second)
     display.print(speed, 1);
     display.setCursor(0,40);
     display.print(int_taxo_per_loop_display, DEC);
+    
+    display.setTextSize(1);
+    display.setCursor(0,50);
+    display.print(dbg_speed_counter);
+    //end DBG screen
   }
   else if(path[0] == SCREEN_SETTINGS)
   {
@@ -598,7 +625,7 @@ void loop()
     bitSet(TCCR1B, CS11);
 
     speed_pulses += int_per_loop_display;
-    //tmp_int = speed_pulses >> 11; // /2048
+    dbg_speed_counter += int_per_loop_display;
     tmp_int = speed_pulses >> 3; // /8
     if( tmp_int > 0 )
     {
@@ -783,7 +810,7 @@ void button_processing(byte btn_numb)
                 else if ( btn_numb == BUTTON_ENT_PIN )
                 {
                     ticks_per_meter = path[2]; 
-                    // TODO: save to eeprom
+                    write_eeprom_byte(0x25, ticks_per_meter);
                     level_deep--;
                 }
             }
