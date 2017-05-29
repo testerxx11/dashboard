@@ -60,11 +60,13 @@ unsigned long start, finished, elapsed;
 
 unsigned long start_loop, finished_loop, loop_time_us;
 
-uint16_t ticks_per_meter = 30;
+//uint16_t ticks_per_meter = 30;
+uint16_t ticks_per_km = 32*1000;
 unsigned long speed_pulses = 0;
 uint16_t dbg_speed_counter = 0; // counter for debug/calibration
 //unsigned long 32 bits (4 bytes) 0 to 4,294,967,295 (2^32 - 1)
-unsigned long odometr_tics = 256009 * 1000 / 8 * ticks_per_meter;
+//unsigned long odometr_tics = 256009 * 1000 / 8 * ticks_per_meter;
+unsigned long odometr_tics = (256009 * ticks_per_km) / 8;
 
 
 //unsigned long odometr = 256009;
@@ -90,7 +92,8 @@ unsigned long convert_odometer_ticks_to_km(unsigned long odo_ticks)
 {
     float tmp_float;
     tmp_float = odo_ticks; 
-    tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
+    //tmp_float = tmp_float * 8  / (ticks_per_meter * 1000);
+    tmp_float = tmp_float * 8  / ticks_per_km;
     odo_ticks = tmp_float;
     return odo_ticks;
 }
@@ -154,7 +157,7 @@ void write_eeprom(uint16_t addr, unsigned long val)
 // 18 19 1A 1B  reserved for odometr 2
 // 1C 1D 1E 1F  reserved for odometr 3
 // 20 21 22 23  reserved for odometr 4
-// 24 25        ticks_per_meter (24 reserved for hi byte)
+// 24 25        ticks_per_km    // deprecated - ticks_per_meter (24 reserved for hi byte)
 // 26           0xEE if data saved; if not - save default values (ticks_per_meter)
 // 27           free
 // 28 29 2A 2B  reserved for time-stamps
@@ -215,6 +218,19 @@ void printBME280Data(Stream * client);
 void printBME280CalculatedData(Stream* client);
 /* ==== END Prototypes ==== */
 
+void write_tiks_p_km_to_eeprom()
+{
+  write_eeprom_byte(0x24, ticks_per_km >> 8);
+  write_eeprom_byte(0x25, ticks_per_km & 0xFF);
+}
+
+void read_tiks_p_km_from_eeprom()
+{
+  ticks_per_km = read_eeprom_byte(0x24);
+  ticks_per_km <<= 8;
+  ticks_per_km |= read_eeprom_byte(0x25);
+}
+
 
 void setup() {
 
@@ -224,11 +240,13 @@ void setup() {
   uint8_t tmp8 = read_eeprom_byte(0x26);
   if ( tmp8 != 0xEE )
   {// write default values
-      write_eeprom_byte(0x25, ticks_per_meter);
+      write_tiks_p_km_to_eeprom();
+      //write_eeprom_byte(0x25, ticks_per_meter);
       write_eeprom_byte(0x26, 0xEE);
   }
   
-  ticks_per_meter = (uint16_t) read_eeprom_byte(0x25);
+  //ticks_per_meter = (uint16_t) read_eeprom_byte(0x25);
+  read_tiks_p_km_from_eeprom();
 
   unsigned long tmp_long;
 //  delay(15000);
@@ -320,7 +338,8 @@ void show_display(byte hour, byte minute, byte second)
 
   //speed = int_per_loop_display * 0.108333;
   //speed = ((int_per_loop_display/ticks_per_meter)/(loop_time_us / 1000000)) * 36 / 10;  // ((m)/(s)) /1000 * 3600       ((m)/(s))*36/10
-  speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36) / 30; //  speed = (((int_per_loop_display * 100000)/loop_time_us) * 36) / 30; 
+  //speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36) / ticks_per_meter; //  speed = (((int_per_loop_display * 100000)/loop_time_us) * 36) / 30; 
+  speed = ((( (uint32_t)int_per_loop_display * 100000)/loop_time_us) * 36 * 10) / (ticks_per_km/100);
   
   if(path[0] == SCREEN_DBG)
   {// DBG screen
@@ -328,15 +347,15 @@ void show_display(byte hour, byte minute, byte second)
     display.setCursor(0,0);
     display.print(memory_free, DEC);
     display.setTextSize(2);
-    display.setCursor(0,20);
+    display.setCursor(0,17);
     display.print(int_per_loop_display, DEC); // print speed sensor, Hz
-    display.setCursor(60,20);
+    display.setCursor(60,17);
     display.print(speed, 1);
-    display.setCursor(0,40);
+    display.setCursor(0,37);
     display.print(int_taxo_per_loop_display, DEC);
     
     display.setTextSize(1);
-    display.setCursor(0,50);
+    display.setCursor(0,57);
     display.print(dbg_speed_counter);
     //end DBG screen
   }
@@ -444,7 +463,8 @@ void show_display(byte hour, byte minute, byte second)
     else
     {
         //tmp16 = (uint16_t) ((odometr_0 - odometr_tics) * 8  / (ticks_per_meter * 1000)); // get meters
-        tmp32 = (odometr_tics - odometr_0) * 8  / ticks_per_meter; // get meters
+        //tmp32 = (odometr_tics - odometr_0) * 8  / ticks_per_meter; // get meters
+        tmp32 = (odometr_tics - odometr_0) * 8  / (ticks_per_km/1000); // get meters
         tmp16 = tmp32 % 1000; // get remaind meters
         tmp16 = tmp16 / 100; // 800m -> 8
         tmp32 = tmp32 / 1000; // m -> km
@@ -469,7 +489,8 @@ void show_display(byte hour, byte minute, byte second)
         display.print(F("RST?"));
     else
     {
-        tmp32 = (odometr_tics - odometr_1) * 8  / ticks_per_meter / 1000; // get km
+        //tmp32 = (odometr_tics - odometr_1) * 8  / ticks_per_meter / 1000; // get km
+        tmp32 = (odometr_tics - odometr_1) * 8  / ticks_per_km; // get km
         //tmp32 = tmp32 / 1000; // m -> km
         display.print(tmp32); // print odometr 1
     }
@@ -783,7 +804,7 @@ void button_processing(byte btn_numb)
             if (( btn_numb == BUTTON_ENT_PIN) && (path[1] == 0))
             {// if enter to 'tiks per meter'
                 level_deep = 2;
-                path[2] = ticks_per_meter;
+                path[2] = ticks_per_km;
             }
         }
         
@@ -804,13 +825,13 @@ void button_processing(byte btn_numb)
             if (path[1] == 0)
             {// 'tiks per meter'
                 if ( btn_numb == BUTTON_UP_PIN )
-                    path[2]++; //change_ticks_per_meter(1);
+                    path[2]+=100; //change_ticks_per_meter(1);
                 else if ( btn_numb == BUTTON_DWN_PIN )
-                    path[2]--; //change_ticks_per_meter(-1);
+                    path[2]-=100; //change_ticks_per_meter(-1);
                 else if ( btn_numb == BUTTON_ENT_PIN )
                 {
-                    ticks_per_meter = path[2]; 
-                    write_eeprom_byte(0x25, ticks_per_meter);
+                    ticks_per_km = path[2]; 
+                    write_tiks_p_km_to_eeprom(); //write_eeprom_byte(0x25, ticks_per_meter);
                     level_deep--;
                 }
             }
