@@ -386,8 +386,20 @@ void show_display(byte hour, byte minute, byte second)
   else if(path[0] == 3)
   {
     display.setTextSize(2);
-    display.setCursor(0,0);
+    display.setCursor(32,0);
     display.print(F("METEO"));
+
+    display.setTextSize(3);
+    display.setCursor(0,20);
+    display.print(temp, 0); // print temperature
+    display.setCursor(64,20);
+    display.print(hum,0); // humidity with round // display.print("75%");
+    display.setTextSize(2);
+    display.print(" %");
+    display.setCursor(10,50);
+    // 1 atm = 760.00210017852 mmHg
+    display.print(pres * 760.00210017852);
+  
   }
   else if(path[0] == 2)
   {
@@ -399,10 +411,18 @@ void show_display(byte hour, byte minute, byte second)
   {
     display.setTextSize(2);
     display.setCursor(0,0);
-    display.print(F("SPEED"));
+    display.print(F("KM/H"));
+    display.setCursor(64,0);
+    display.print(F("TAX"));
+    display.setCursor(114,0);
+    display.print(F("G"));
     display.setTextSize(3);
     display.setCursor(0,20);
     display.print(speed);
+    display.setCursor(64,20);
+    display.print(int_taxo_per_loop_display, DEC);
+    display.setCursor(112,20);
+    display.print(6, DEC);
   }
   else // default path[0] == 0 SCREEN_MAIN
   {
