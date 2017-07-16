@@ -650,6 +650,7 @@ int memoryFree()
 int read_bme_counter = 0;
 int write_odometr_counter = 0;
 
+uint32_t last_press_time = 0;
 
 void loop() 
 {
@@ -712,49 +713,51 @@ void loop()
 
     byte btn_list [4]  = {BUTTON_DWN_PIN, BUTTON_UP_PIN, BUTTON_ENT_PIN, BUTTON_ESC_PIN };
   
-    pin_push_counter = 0;
-    int last_pin_press = 0;
+    //pin_push_counter = 0;
+    //int last_pin_press = 0;
     while(true)
     { //btn read cycle
+        bool break_btn_read_cycle = false;
         finished_loop = micros();
         loop_time_us = finished_loop - start_loop; // us
         final_delay = 1000 - loop_time_us/1000; // ms from every second
         if(final_delay <= 0)
           break;
+         
+        //if(final_delay < 800)
+        //{// litle pause for prevent secondary push
+            
+            
+        for( int step = 0; step < 4; step++ )
+        {// read all buttons
+            tmp_int = digitalRead(btn_list[step]); // read the input pin 8 uS
 
-        if(final_delay < 800)
-        {// litle pause for prevent secondary push
-            bool break_btn_read_cycle = false;
-            //current_mrs = micros();
-            for( int step = 0; step < 4; step++ )
-            {// read all buttons
-                tmp_int = digitalRead(btn_list[step]); // read the input pin 8 uS
+            if ( tmp_int == 0 )
+            {
+                if(last_press_time != 0)
+                {
+                    loop_time_us = millis() - last_press_time; // us
+                    if(loop_time_us >= 100)
+                        last_press_time = 0; // if time passed after key realesed
+                    else
+                        last_press_time = millis();
+                }
 
-                if ( tmp_int == 0 )
+                if(last_press_time == 0)
                 {
                     Serial.print(" captured.");
-                    if( last_pin_press != step)
-                    {    
-                        last_pin_press = step;
-                        pin_push_counter = 0;
-                    }
-                    else
-                        pin_push_counter++;
-                    
-                    if( pin_push_counter > 10  )
-                    {
-                        button_processing(btn_list[step]);
-                        break_btn_read_cycle = true;
-                        break;
-                    }
+                    last_press_time = millis();
+                    button_processing(btn_list[step]);
+                    break_btn_read_cycle = true;
+                    break;
                 }
-            }          
-            //current_mrs = micros() - current_mrs;
-            //Serial.print(" digRead,us: ");
-            //Serial.print(current_mrs, DEC); // 8 uS
-            if ( break_btn_read_cycle == true )
-              break;
-        }
+            }
+        }          
+        
+        if ( break_btn_read_cycle == true )
+          break;
+          
+        //}
     
     }//end btn read cycle
   
