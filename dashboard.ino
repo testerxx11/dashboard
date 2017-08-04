@@ -86,6 +86,11 @@ uint16_t memory_free;
 
 int16_t path [4] = {SCREEN_MAIN, -1, -1, -1};
 int8_t level_deep = 0;
+#define settings_list_len 3
+#define settings_ticks_pos 1
+char* settings_list[] = {"SET TIME","TICKSpM","SHOW DBG"};
+//int8_t settings_list_len = 3;
+// int len = strlen(string)
 
 
 unsigned long convert_odometer_ticks_to_km(unsigned long odo_ticks)
@@ -357,31 +362,51 @@ void show_display(byte hour, byte minute, byte second)
     display.setTextSize(1);
     display.setCursor(0,57);
     display.print(dbg_speed_counter);
+    
+    display.drawPixel(127, 63, WHITE);
+    display.drawPixel(0, 63, WHITE);
     //end DBG screen
   }
   else if(path[0] == SCREEN_SETTINGS)
   {
-    display.setTextSize(2);
-    display.setCursor(0,0);
-    display.print(F("SETTINGS"));
-
-    if ( level_deep == 1 )
-    {// inside screen
-        display.setCursor(5,20);
-        display.print(F("SHOW_DBG")); // TODO
-        display.setCursor(5,40);
-        display.print(F("TICKSpM"));
+    //--------------- SCREEN_SETTINGS --------------------------------
+    if ( level_deep == 0 )
+    {
+      display.setTextSize(2);
+      display.setCursor(15,20);
+      display.print(F("SETTINGS"));
     }
-    else if (( level_deep == 2 ) && ( path[1] == 0 ))
-    {//select tiks per meter
-        display.setCursor(0,20);
-        display.print(F("TICKSpMET:"));
-        display.setCursor(40,45);
-        display.print(path[2]);
+    else
+    {
+      if ( level_deep == 1 )
+      {// inside screen
+          int8_t curr_pos = path[1];
+          curr_pos--;
+          if ( curr_pos < 0 ) curr_pos = settings_list_len -1;
+          display.setTextSize(1);
+          display.setCursor(15,0);
+          display.print(settings_list[curr_pos]);
+          display.setTextSize(2);
+          display.setCursor(5,20);
+          curr_pos = path[1];
+          display.print(settings_list[curr_pos]);
+          display.setTextSize(1);
+          display.setCursor(15,50);
+          curr_pos++;
+          if (curr_pos >= settings_list_len) curr_pos = 0;
+          display.print(settings_list[curr_pos]);
+      }
+      else if (( level_deep == 2 ) && ( path[1] == settings_ticks_pos ))
+      {//select tiks per meter
+          display.setCursor(0,20);
+          //display.print(F("TICKSpMET:"));
+          display.print(settings_list[path[1]]);
+          display.setCursor(40,45);
+          display.print(path[2]);
+      }
+      
     }
-    
-    
-    
+    //--------------- END SCREEN_SETTINGS --------------------------------
   }
   else if(path[0] == 3)
   {
@@ -823,12 +848,22 @@ void button_processing(byte btn_numb)
         }
         else if ( path[0] == SCREEN_SETTINGS ) 
         {
-            //TODO: add new settings
-            if (( btn_numb == BUTTON_ENT_PIN) && (path[1] == 0))
-            {// if enter to 'tiks per meter'
-                level_deep = 2;
-                path[2] = ticks_per_km;
-            }
+
+          if ( btn_numb == BUTTON_DWN_PIN)
+          {
+              path[1]++;
+              if ( path[1] >= settings_list_len ) path[1] = 0;
+          }
+          else if ( btn_numb == BUTTON_UP_PIN)
+          {
+              path[1]--;
+              if ( path[1] < 0 ) path[1] = settings_list_len -1;
+          }
+          else if (( btn_numb == BUTTON_ENT_PIN) && (path[1] == settings_ticks_pos))
+          {// if enter to 'tiks per meter'
+              level_deep = 2;
+              path[2] = ticks_per_km;
+          }
         }
         
     }//end level 1 - inside screen
@@ -845,7 +880,7 @@ void button_processing(byte btn_numb)
         }
         else if ( path[0] == SCREEN_SETTINGS )
         {
-            if (path[1] == 0)
+            if (path[1] == settings_ticks_pos)
             {// 'tiks per meter'
                 if ( btn_numb == BUTTON_UP_PIN )
                     path[2]+=100; //change_ticks_per_meter(1);
